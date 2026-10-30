@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">BlackSlate</string>
+    <string name="shortcut_open">Open Black Slate</string>
+    <string name="shortcut_open_long">Open Black Slate</string>
 </resources>

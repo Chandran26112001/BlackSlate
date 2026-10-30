@@ -3,6 +3,7 @@ package com.example.blackslate
 import android.app.KeyguardManager
 import android.content.Context
 import android.os.Bundle
+import android.os.Build
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -38,6 +39,7 @@ class MainActivity : ComponentActivity() {
     }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        removeLegacyAssistantTasks(this, taskId)
         enableEdgeToEdge()
         val loaded = runCatching { FinanceStore(this) }
         store = loaded.getOrNull()
@@ -77,5 +79,26 @@ class MainActivity : ComponentActivity() {
     override fun onStop() {
         super.onStop()
         if (!isChangingConfigurations && store?.snapshot?.settings?.appLock == true) unlocked = false
+    }
+}
+
+/** A keyguard-safe shortcut: it overlays the lock screen without dismissing it and exposes logging only. */
+class LockedLogActivity : ComponentActivity() {
+    @Suppress("DEPRECATION")
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            setShowWhenLocked(true)
+            setTurnScreenOn(true)
+        } else window.addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON)
+        window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        val loaded = runCatching { FinanceStore(this) }
+        setContent {
+            val finance = loaded.getOrNull()
+            if (finance == null) BlackSlateTheme {
+                Surface(Modifier.fillMaxSize()) { Text("Black Slate could not read its saved data.", Modifier.padding(28.dp)) }
+            } else BlackSlateApp(finance, assistantLogOnly = true)
+        }
     }
 }
