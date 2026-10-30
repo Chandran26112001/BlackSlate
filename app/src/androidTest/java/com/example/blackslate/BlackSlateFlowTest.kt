@@ -47,11 +47,11 @@ class BlackSlateFlowTest {
         reopened.settle(tx.id, "UPI")
         assertEquals(2, reopened.snapshot.transactions.single().shares.single().repayments.size)
     }
-    @Test fun backNavigationAndSilverPersist() {
+    @Test fun backNavigationAndAppearancePersist() {
         start()
         tap("Settings")
-        tap("Silver")
-        compose.runOnIdle { assertEquals(Appearance.SILVER, store.snapshot.settings.appearance) }
+        tap("Matte Black")
+        compose.runOnIdle { assertEquals(Appearance.MATTE, store.snapshot.settings.appearance) }
         compose.onNodeWithText("Manage categories").performScrollTo().performClick()
         compose.onNodeWithText("Categories").assertIsDisplayed()
         Espresso.pressBack()

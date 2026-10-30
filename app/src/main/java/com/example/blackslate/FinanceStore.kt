@@ -295,10 +295,10 @@ fun decodeSnapshot(raw: String): FinanceSnapshot {
     val settingsJson = root.optJSONObject("settings") ?: JSONObject()
     val settings = AppSettings(
         settingsJson.optString("profileName", "Venkat C"),
-        enumOr(settingsJson.optString("appearance"), Appearance.MATTE),
+        enumOr(settingsJson.optString("appearance"), Appearance.SILVER),
         enumOr(settingsJson.optString("currency"), Currency.INR),
         settingsJson.optBoolean("haptics", true), settingsJson.optBoolean("liquidPhysics", true), settingsJson.optBoolean("appLock", false),
-        settingsJson.optBoolean("categoryListView", false), settingsJson.optBoolean("saveLocation", false),
+        settingsJson.optBoolean("categoryListView", true), settingsJson.optBoolean("saveLocation", false),
         settingsJson.optBoolean("allowPhotoAttachments", true), settingsJson.nullableLong("monthlyBudgetCents")
     )
     val categories = root.optJSONArray("categories").objects().map {

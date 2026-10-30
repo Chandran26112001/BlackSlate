@@ -44,7 +44,6 @@ private fun writePeople(people: List<Person>): String = JSONArray().apply { peop
     var includeMe by rememberSaveable { mutableStateOf(true) }
     var spendingCategoryId by rememberSaveable(category.id) { mutableStateOf<String?>(null) }
     var error by rememberSaveable { mutableStateOf("") }
-    var contactSearch by rememberSaveable { mutableStateOf(false) }
     var splitMode by rememberSaveable { mutableStateOf(SplitMode.EQUAL) }
     var splitValues by rememberSaveable { mutableStateOf(mapOf<String, String>()) }
     fun add(person: Person) {
@@ -53,8 +52,10 @@ private fun writePeople(people: List<Person>): String = JSONArray().apply { peop
         peopleRaw = writePeople(if (category.type == CategoryType.LENDING) listOf(known) else people + known)
         name = ""; error = ""; feedback()
     }
-    val contactPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) contactSearch = true else error = "Allow contacts to search, or enter a name below."
+    val contactPicker = rememberLauncherForActivityResult(PickContactPhone()) { uri ->
+        uri?.let { selected ->
+            readContact(context, selected)?.let(::add) ?: run { error = "That contact could not be read. Enter a name below instead." }
+        }
     }
     val splitResult = runCatching {
         if (category.type == CategoryType.LENDING) people.take(1).map { Share(it, cents) }
@@ -69,9 +70,7 @@ private fun writePeople(people: List<Person>): String = JSONArray().apply { peop
                 Text(if (category.type == CategoryType.LENDING) "Lend " + money(cents, currency) else "Split " + money(cents, currency),
                     style = MaterialTheme.typography.headlineMedium)
                 Action("Choose contact", Modifier.fillMaxWidth(), secondary = true) {
-                    if (androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.READ_CONTACTS) ==
-                        android.content.pm.PackageManager.PERMISSION_GRANTED) contactSearch = true
-                    else contactPermission.launch(android.Manifest.permission.READ_CONTACTS)
+                    contactPicker.launch(null)
                 }
                 Caption("RECENT PEOPLE")
                 if (availableRecent.isEmpty()) Caption("No recent people yet")
@@ -118,7 +117,6 @@ private fun writePeople(people: List<Person>): String = JSONArray().apply { peop
             }
         }
     }
-    if (contactSearch) ContactSearchSheet({ contactSearch = false }) { person -> add(person); contactSearch = false }
 }
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -472,10 +470,10 @@ private fun writePeople(people: List<Person>): String = JSONArray().apply { peop
                 Text("Power-button launch", Modifier.weight(1f))
                 Switch(assistantEnabled, { enabled -> if (enabled) enableAssistant() else manageAssistant() })
             }
-            Caption(if (assistantEnabled) "Black Slate is your default Assistant. Hold power to open it."
-                else "Optional · requires choosing Black Slate as your default Assistant.")
+            Caption(if (assistantEnabled) "Black Slate is your default digital assistant. Hold power to open it."
+                else "Optional · choose Black Slate as your default digital assistant, then hold power to open it. This replaces Gemini or Google Assistant on the power button.")
             Caption("Black Slate never listens or reads the screen in this mode.")
-            Action(if (assistantEnabled) "Change default Assistant" else "Enable power-button launch", Modifier.fillMaxWidth(), secondary = true,
+            Action(if (assistantEnabled) "Change default assistant" else "Enable power-button launch", Modifier.fillMaxWidth(), secondary = true,
                 onClick = if (assistantEnabled) manageAssistant else enableAssistant)
         } }
         item { SlateCard {
@@ -574,9 +572,16 @@ private fun writePeople(people: List<Person>): String = JSONArray().apply { peop
 }
 @Composable fun CategorySheet(dismiss: () -> Unit, category: Category? = null, save: (String) -> Unit) {
     var name by rememberSaveable(category?.id) { mutableStateOf(category?.name.orEmpty()) }
+    val focus = remember { FocusRequester() }
+    val keyboard = LocalSoftwareKeyboardController.current
+    if (category == null) LaunchedEffect(Unit) {
+        withFrameNanos { }
+        focus.requestFocus()
+        keyboard?.show()
+    }
     Sheet(if (category == null) "New category" else "Edit category", dismiss) {
         OutlinedTextField(name, { name = it }, label = { Text("Category name") }, singleLine = true,
-            modifier = Modifier.fillMaxWidth().testTag("newCategoryName"))
+            modifier = Modifier.fillMaxWidth().focusRequester(focus).testTag("newCategoryName"))
         Action(if (category == null) "Create expense category" else "Save category", Modifier.fillMaxWidth(),
             enabled = name.isNotBlank()) { save(name) }
     }

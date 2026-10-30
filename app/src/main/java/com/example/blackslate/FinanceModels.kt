@@ -46,12 +46,12 @@ data class Transaction(
 }
 data class AppSettings(
     val profileName: String = "Venkat C",
-    val appearance: Appearance = Appearance.MATTE,
+    val appearance: Appearance = Appearance.SILVER,
     val currency: Currency = Currency.INR,
     val haptics: Boolean = true,
     val liquidPhysics: Boolean = true,
     val appLock: Boolean = false,
-    val categoryListView: Boolean = false,
+    val categoryListView: Boolean = true,
     /** Location is deliberately off until the owner chooses to save it. */
     val saveLocation: Boolean = false,
     /** Images are attached only after an explicit camera/gallery action. */

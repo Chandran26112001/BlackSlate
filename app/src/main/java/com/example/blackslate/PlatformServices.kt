@@ -2,6 +2,7 @@ package com.example.blackslate
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.app.Activity
 import android.content.ClipData
 import android.content.Context
 import android.content.Intent
@@ -11,6 +12,7 @@ import android.location.Geocoder
 import android.net.Uri
 import android.os.*
 import android.provider.ContactsContract
+import androidx.activity.result.contract.ActivityResultContract
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.core.location.LocationManagerCompat
@@ -39,6 +41,13 @@ class TouchFeedback(context: Context, private val enabled: () -> Boolean) {
             VibrationEffect.createPredefined(id) else null
     }
 }
+/** Picks a phone entry, not a whole contact, so the returned URI exposes name and number without READ_CONTACTS. */
+class PickContactPhone : ActivityResultContract<Unit?, Uri?>() {
+    override fun createIntent(context: Context, input: Unit?) =
+        Intent(Intent.ACTION_PICK).setType(ContactsContract.CommonDataKinds.Phone.CONTENT_TYPE)
+    override fun parseResult(resultCode: Int, intent: Intent?): Uri? = intent?.data?.takeIf { resultCode == Activity.RESULT_OK }
+}
+
 fun readContact(context: Context, uri: Uri): Person? = runCatching {
     context.contentResolver.query(uri, arrayOf(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME, ContactsContract.CommonDataKinds.Phone.NUMBER), null, null, null)?.use {
         if (it.moveToFirst()) newPerson(it.getString(0).orEmpty(), it.getString(1).orEmpty()) else null

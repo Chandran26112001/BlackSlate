@@ -25,7 +25,7 @@ private val Silver = lightColorScheme(
     error = Color(0xFFB52A35)
 )
 @Composable
-fun BlackSlateTheme(appearance: Appearance = Appearance.MATTE, content: @Composable () -> Unit) {
+fun BlackSlateTheme(appearance: Appearance = Appearance.SILVER, content: @Composable () -> Unit) {
     val dark = appearance == Appearance.MATTE || (appearance == Appearance.SYSTEM && isSystemInDarkTheme())
     MaterialTheme(colorScheme = if (dark) Dark else Silver, typography = Typography, content = content)
 }
