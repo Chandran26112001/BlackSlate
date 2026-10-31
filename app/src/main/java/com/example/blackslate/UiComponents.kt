@@ -27,8 +27,12 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
+import com.example.blackslate.ui.theme.BodyFont
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.*
@@ -36,10 +40,51 @@ import androidx.compose.ui.window.Dialog
 import kotlinx.coroutines.delay
 
 val LocalFeedback = staticCompositionLocalOf<() -> Unit> { {} }
-@Composable fun Action(label: String, modifier: Modifier = Modifier, enabled: Boolean = true, secondary: Boolean = false, onClick: () -> Unit) {
+/** The app's only button. [icon] puts a drawn glyph before the label; [compact] trims the side padding so short labels fit in a row. */
+@Composable fun Action(label: String, modifier: Modifier = Modifier, enabled: Boolean = true, secondary: Boolean = false,
+    icon: SlateIcon? = null, compact: Boolean = false, onClick: () -> Unit) {
     val pulse = LocalFeedback.current
-    if (secondary) OutlinedButton(onClick = { pulse(); onClick() }, enabled = enabled, modifier = modifier, shape = RoundedCornerShape(18.dp)) { Text(label) }
-    else Button(onClick = { pulse(); onClick() }, enabled = enabled, modifier = modifier, shape = RoundedCornerShape(18.dp)) { Text(label) }
+    val padding = if (compact) PaddingValues(horizontal = 12.dp, vertical = 8.dp) else ButtonDefaults.ContentPadding
+    val content: @Composable RowScope.() -> Unit = {
+        if (icon != null) { SlateGlyph(icon, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)) }
+        Text(label)
+    }
+    if (secondary) OutlinedButton(onClick = { pulse(); onClick() }, enabled = enabled, modifier = modifier, shape = RoundedCornerShape(18.dp),
+        contentPadding = padding, content = content)
+    else Button(onClick = { pulse(); onClick() }, enabled = enabled, modifier = modifier, shape = RoundedCornerShape(18.dp),
+        contentPadding = padding, content = content)
+}
+/** An outlined button that holds only a drawn glyph, such as the month stepper's chevrons. */
+@Composable fun ActionIcon(icon: SlateIcon, description: String, modifier: Modifier = Modifier, enabled: Boolean = true, onClick: () -> Unit) {
+    val pulse = LocalFeedback.current
+    OutlinedButton(onClick = { pulse(); onClick() }, enabled = enabled, shape = RoundedCornerShape(18.dp), contentPadding = PaddingValues(0.dp),
+        modifier = modifier.defaultMinSize(minWidth = 52.dp).semantics { contentDescription = description }) {
+        SlateGlyph(icon, Modifier.size(20.dp))
+    }
+}
+/** NType 82 has no rupee glyph, so Android would draw the symbol in an unrelated system face. Set it in Helvetica instead. */
+fun String.withRupeeFace(): AnnotatedString = buildAnnotatedString {
+    for (ch in this@withRupeeFace) {
+        if (ch == '₹') withStyle(SpanStyle(fontFamily = BodyFont)) { append(ch) } else append(ch)
+    }
+}
+/** Material's Switch, themed from the scheme so the off state is no longer Material's lavender. */
+@Composable fun SlateSwitch(checked: Boolean, onCheckedChange: ((Boolean) -> Unit)?, enabled: Boolean = true) {
+    val c = MaterialTheme.colorScheme
+    Switch(checked, onCheckedChange, enabled = enabled, colors = SwitchDefaults.colors(
+        checkedThumbColor = c.onPrimary, checkedTrackColor = c.primary, checkedBorderColor = c.primary,
+        uncheckedThumbColor = c.outline, uncheckedTrackColor = c.surfaceVariant, uncheckedBorderColor = c.outline))
+}
+@Composable fun SlateDivider() = HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = .5f))
+/** The one text field for labelled input: Material's outlined field, with the app's 12px corners and surface fill. */
+@Composable fun SlateTextField(value: String, onValueChange: (String) -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true,
+    label: @Composable (() -> Unit)? = null, singleLine: Boolean = false, keyboardOptions: KeyboardOptions = KeyboardOptions.Default) {
+    val c = MaterialTheme.colorScheme
+    OutlinedTextField(value, onValueChange, modifier, enabled = enabled, label = label, singleLine = singleLine, keyboardOptions = keyboardOptions,
+        shape = RoundedCornerShape(12.dp), colors = OutlinedTextFieldDefaults.colors(
+            focusedContainerColor = c.surface, unfocusedContainerColor = c.surface, disabledContainerColor = c.surface,
+            focusedBorderColor = c.primary, unfocusedBorderColor = c.outline, disabledBorderColor = c.outline.copy(alpha = .5f),
+            focusedLabelColor = c.onSurfaceVariant, unfocusedLabelColor = c.onSurfaceVariant, cursorColor = c.onSurface))
 }
 @Composable fun SlateCard(modifier: Modifier = Modifier, onClick: (() -> Unit)? = null, content: @Composable ColumnScope.() -> Unit) {
     val pulse = LocalFeedback.current
@@ -55,7 +100,7 @@ val LocalFeedback = staticCompositionLocalOf<() -> Unit> { {} }
 }
 @Composable fun PageHeader(title: String, back: () -> Unit) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Action("‹ Back", secondary = true, onClick = back)
+        Action("Back", secondary = true, icon = SlateIcon.CHEVRON_LEFT, onClick = back)
         Spacer(Modifier.width(16.dp))
         Text(title, style = MaterialTheme.typography.headlineMedium)
     }
@@ -75,14 +120,14 @@ val LocalFeedback = staticCompositionLocalOf<() -> Unit> { {} }
         Text(label, style = MaterialTheme.typography.bodyMedium,
             color = if (selected) colors.secondary else colors.onSurface)
     }, onClick = onClick, trailingIcon = {
-        if (selected) Text("✓", color = colors.secondary, style = MaterialTheme.typography.labelLarge)
+        if (selected) SlateGlyph(SlateIcon.SAVE, Modifier.size(18.dp), colors.secondary)
     }, modifier = Modifier.heightIn(min = 48.dp), contentPadding = PaddingValues(horizontal = 18.dp))
 }
 @Composable fun Sheet(title: String, onDismiss: () -> Unit, showTitle: Boolean = true, content: @Composable ColumnScope.() -> Unit) {
     Dialog(onDismissRequest = onDismiss) {
         Surface(shape = RoundedCornerShape(28.dp), tonalElevation = 6.dp) {
             Column(Modifier.fillMaxWidth().heightIn(max = 660.dp).imePadding().verticalScroll(rememberScrollState()).padding(22.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                if (showTitle) Text(title, style = MaterialTheme.typography.headlineMedium)
+                if (showTitle) Text(title.withRupeeFace(), style = MaterialTheme.typography.headlineMedium)
                 content()
                 Action("Close", Modifier.fillMaxWidth(), secondary = true, onClick = onDismiss)
             }
@@ -179,7 +224,7 @@ data class Notice(
                         val target = current?.targetText
                         val message = buildAnnotatedString {
                             if (amount != null && target != null) {
-                                withStyle(MaterialTheme.typography.titleLarge.copy(fontSize = 23.sp).toSpanStyle()) { append(amount) }
+                                withStyle(MaterialTheme.typography.titleLarge.copy(fontSize = 23.sp).toSpanStyle()) { append(amount.withRupeeFace()) }
                                 append("  ")
                                 withStyle(MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp).toSpanStyle()) { append(target) }
                             } else append(current?.text.orEmpty())
@@ -267,7 +312,7 @@ private fun undoIdFor(notice: Notice?): String? = notice?.undoKey ?: notice?.tra
     }
 }
 
-enum class SlateIcon { CAMERA, LOCATION, TRASH, EDIT, SAVE }
+enum class SlateIcon { CAMERA, LOCATION, TRASH, EDIT, SAVE, CHEVRON_LEFT, CHEVRON_RIGHT, ARROW_UP_RIGHT, BRAND, BACKSPACE }
 @Composable fun IconAction(icon: SlateIcon, label: String, onClick: () -> Unit, modifier: Modifier = Modifier, showLabel: Boolean = true,
     enabled: Boolean = true, iconSize: Dp = 20.dp, tint: Color = MaterialTheme.colorScheme.onSurface) {
     val feedback = LocalFeedback.current
@@ -275,10 +320,40 @@ enum class SlateIcon { CAMERA, LOCATION, TRASH, EDIT, SAVE }
     Row(modifier.semantics { contentDescription = label }.clickable(enabled = enabled) { feedback(); onClick() }.padding(8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = if (showLabel) Arrangement.spacedBy(5.dp) else Arrangement.Center) {
-        Canvas(Modifier.size(iconSize)) {
+        SlateGlyph(icon, Modifier.size(iconSize), ink)
+        if (showLabel) Text(label, color = ink, style = MaterialTheme.typography.labelMedium)
+    }
+}
+/** The app's drawn line icons: round caps and joins, a stroke of about 7 to 9 percent of the size. */
+@Composable fun SlateGlyph(icon: SlateIcon, modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) {
+    val ink = tint
+    Canvas(modifier) {
             val w = size.width
             val h = size.height
             when (icon) {
+                SlateIcon.CHEVRON_LEFT, SlateIcon.CHEVRON_RIGHT -> {
+                    val flip = icon == SlateIcon.CHEVRON_RIGHT
+                    fun x(v: Float) = w * (if (flip) 1f - v else v)
+                    val chevron = Path().apply { moveTo(x(.62f), h * .22f); lineTo(x(.36f), h * .5f); lineTo(x(.62f), h * .78f) }
+                    drawPath(chevron, ink, style = Stroke(w * .1f, cap = StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round))
+                }
+                SlateIcon.ARROW_UP_RIGHT -> {
+                    drawLine(ink, androidx.compose.ui.geometry.Offset(w * .24f, h * .76f), androidx.compose.ui.geometry.Offset(w * .74f, h * .26f), w * .09f, cap = StrokeCap.Round)
+                    val head = Path().apply { moveTo(w * .34f, h * .26f); lineTo(w * .74f, h * .26f); lineTo(w * .74f, h * .66f) }
+                    drawPath(head, ink, style = Stroke(w * .09f, cap = StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round))
+                }
+                SlateIcon.BRAND -> {
+                    val outer = Path().apply { moveTo(w * .5f, h * .08f); lineTo(w * .92f, h * .5f); lineTo(w * .5f, h * .92f); lineTo(w * .08f, h * .5f); close() }
+                    drawPath(outer, ink, style = Stroke(w * .085f, join = androidx.compose.ui.graphics.StrokeJoin.Round))
+                    val inner = Path().apply { moveTo(w * .5f, h * .32f); lineTo(w * .68f, h * .5f); lineTo(w * .5f, h * .68f); lineTo(w * .32f, h * .5f); close() }
+                    drawPath(inner, ink)
+                }
+                SlateIcon.BACKSPACE -> {
+                    val tag = Path().apply { moveTo(w * .1f, h * .5f); lineTo(w * .32f, h * .22f); lineTo(w * .9f, h * .22f); lineTo(w * .9f, h * .78f); lineTo(w * .32f, h * .78f); close() }
+                    drawPath(tag, ink, style = Stroke(w * .07f, join = androidx.compose.ui.graphics.StrokeJoin.Round))
+                    drawLine(ink, androidx.compose.ui.geometry.Offset(w * .5f, h * .4f), androidx.compose.ui.geometry.Offset(w * .7f, h * .6f), w * .07f, cap = StrokeCap.Round)
+                    drawLine(ink, androidx.compose.ui.geometry.Offset(w * .7f, h * .4f), androidx.compose.ui.geometry.Offset(w * .5f, h * .6f), w * .07f, cap = StrokeCap.Round)
+                }
                 SlateIcon.CAMERA -> {
                     drawRoundRect(ink, topLeft = androidx.compose.ui.geometry.Offset(w * .08f, h * .28f),
                         size = androidx.compose.ui.geometry.Size(w * .84f, h * .61f),
@@ -330,6 +405,4 @@ enum class SlateIcon { CAMERA, LOCATION, TRASH, EDIT, SAVE }
                 }
             }
         }
-        if (showLabel) Text(label, color = ink, style = MaterialTheme.typography.labelMedium)
-    }
 }

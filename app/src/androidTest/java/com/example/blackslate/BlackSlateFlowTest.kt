@@ -75,7 +75,7 @@ class BlackSlateFlowTest {
             val tx = store.snapshot.transactions.single()
             assertEquals(2, tx.shares.size); assertEquals(10000L, tx.personalCost); assertEquals(20000L, tx.outstanding)
         }
-        tap("↗  Insights")
+        tap("Insights")
         tap("Peer ledger")
         compose.onNodeWithTag("person_Alice").performScrollTo().performClick()
         compose.onNodeWithText("Group share · ₹100").performScrollTo().performClick()
@@ -224,7 +224,7 @@ class BlackSlateFlowTest {
     @Test fun assistantLogModeHidesInsightsAndSettings() {
         compose.setContent { BlackSlateApp(store, assistantLogOnly = true) }
         compose.onNodeWithTag("amountDrag").assertIsDisplayed()
-        compose.onNodeWithText("↗  Insights").assertDoesNotExist()
+        compose.onNodeWithText("Insights").assertDoesNotExist()
         compose.onNodeWithText("Settings").assertDoesNotExist()
     }
 }

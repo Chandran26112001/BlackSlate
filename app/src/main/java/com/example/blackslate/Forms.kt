@@ -63,59 +63,59 @@ private fun writePeople(people: List<Person>): String = JSONArray().apply { peop
     }
     val shares = splitResult.getOrDefault(emptyList())
     val availableRecent = recent.filterNot { candidate -> people.any { it.id == candidate.id } }
-    Dialog(onDismissRequest = dismiss) {
-        Surface(shape = RoundedCornerShape(28.dp), tonalElevation = 6.dp) {
-            Column(Modifier.fillMaxWidth().heightIn(max = 660.dp).imePadding().verticalScroll(rememberScrollState()).padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(if (category.type == CategoryType.LENDING) "Lend " + money(cents, currency) else "Split " + money(cents, currency),
-                    style = MaterialTheme.typography.headlineMedium)
-                Action("Choose contact", Modifier.fillMaxWidth(), secondary = true) {
-                    contactPicker.launch(null)
-                }
-                Caption("RECENT PEOPLE")
-                if (availableRecent.isEmpty()) Caption("No recent people yet")
-                else FlowChoices(availableRecent.map { it.id to it.name }) { id ->
-                    availableRecent.firstOrNull { it.id == id }?.let(::add)
-                }
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    CompactInput(name, { name = it }, "Name", Modifier.weight(1f), inputModifier = Modifier.testTag("personName"))
-                    Action("Add person", enabled = name.isNotBlank(), secondary = true) { add(newPerson(name)) }
-                }
-                if (people.isNotEmpty()) {
-                    Caption("ADDED PEOPLE")
-                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        people.forEach { person ->
-                            CompactChoice(person.name + " · " + money(shares.firstOrNull { it.person.id == person.id }?.cents ?: 0, currency) + " ×",
-                                selected = true) { peopleRaw = writePeople(people.filterNot { it.id == person.id }) }
-                        }
-                    }
-                }
-                if (category.type == CategoryType.GROUP) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text("Include my share")
-                            if (shares.isNotEmpty()) Caption("Your share · " + money(cents - shares.sumOf { it.cents }, currency))
-                        }
-                        Switch(includeMe, { feedback(); includeMe = it })
-                    }
-                    if (people.isNotEmpty()) GroupSplitControls(cents, currency, people, includeMe, splitMode, { mode ->
-                        splitMode = mode
-                        splitValues = if (mode == SplitMode.AMOUNTS) shares.associate { it.person.id to java.math.BigDecimal(it.cents).movePointLeft(2).toPlainString() } +
-                            (SELF_SPLIT_ID to java.math.BigDecimal(cents - shares.sumOf { it.cents }).movePointLeft(2).toPlainString()) else emptyMap()
-                    }, splitValues, { id, value -> splitValues = splitValues + (id to value) })
-                    Caption("SPENDING CATEGORY · OPTIONAL")
-                    FlowChoices(listOf("" to "None") + expenseCategories.map { it.id to it.name }, spendingCategoryId) { id ->
-                        spendingCategoryId = id.ifEmpty { null }
-                    }
-                }
-                if (category.type == CategoryType.GROUP && people.isNotEmpty() && splitResult.isFailure)
-                    Caption(splitResult.exceptionOrNull()?.message ?: "Check the split.")
-                if (error.isNotBlank()) Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-                Action(if (category.type == CategoryType.LENDING) "Save lending" else "Save group expense", Modifier.fillMaxWidth().testTag("saveShared"),
-                    enabled = people.isNotEmpty() && shares.isNotEmpty() && shares.all { it.cents > 0 }) { save(shares, spendingCategoryId) }
-                Action("Close", Modifier.fillMaxWidth(), secondary = true, onClick = dismiss)
+    Sheet(if (category.type == CategoryType.LENDING) "Lend " + money(cents, currency) else "Split " + money(cents, currency), dismiss) {
+        Action("Choose contact", Modifier.fillMaxWidth(), secondary = true) {
+            contactPicker.launch(null)
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Caption("RECENT PEOPLE")
+            if (availableRecent.isEmpty()) Caption("No recent people yet")
+            else FlowChoices(availableRecent.map { it.id to it.name }) { id ->
+                availableRecent.firstOrNull { it.id == id }?.let(::add)
             }
         }
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            CompactInput(name, { name = it }, "Name", Modifier.weight(1f), inputModifier = Modifier.testTag("personName"))
+            Action("Add person", enabled = name.isNotBlank(), secondary = true) { add(newPerson(name)) }
+        }
+        if (people.isNotEmpty()) {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Caption("ADDED PEOPLE")
+                FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    people.forEach { person ->
+                        CompactChoice(person.name + " · " + money(shares.firstOrNull { it.person.id == person.id }?.cents ?: 0, currency) + " ×",
+                            selected = true) { peopleRaw = writePeople(people.filterNot { it.id == person.id }) }
+                    }
+                }
+            }
+        }
+        if (category.type == CategoryType.GROUP) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Include my share")
+                    if (shares.isNotEmpty()) Caption("Your share · " + money(cents - shares.sumOf { it.cents }, currency))
+                }
+                SlateSwitch(includeMe, { feedback(); includeMe = it })
+            }
+            if (people.isNotEmpty()) Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                GroupSplitControls(cents, currency, people, includeMe, splitMode, { mode ->
+                    splitMode = mode
+                    splitValues = if (mode == SplitMode.AMOUNTS) shares.associate { it.person.id to java.math.BigDecimal(it.cents).movePointLeft(2).toPlainString() } +
+                        (SELF_SPLIT_ID to java.math.BigDecimal(cents - shares.sumOf { it.cents }).movePointLeft(2).toPlainString()) else emptyMap()
+                }, splitValues, { id, value -> splitValues = splitValues + (id to value) })
+            }
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Caption("SPENDING CATEGORY · OPTIONAL")
+                FlowChoices(listOf("" to "None") + expenseCategories.map { it.id to it.name }, spendingCategoryId) { id ->
+                    spendingCategoryId = id.ifEmpty { null }
+                }
+            }
+        }
+        if (category.type == CategoryType.GROUP && people.isNotEmpty() && splitResult.isFailure)
+            Caption(splitResult.exceptionOrNull()?.message ?: "Check the split.")
+        if (error.isNotBlank()) Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+        Action(if (category.type == CategoryType.LENDING) "Save lending" else "Save group expense", Modifier.fillMaxWidth().testTag("saveShared"),
+            enabled = people.isNotEmpty() && shares.isNotEmpty() && shares.all { it.cents > 0 }) { save(shares, spendingCategoryId) }
     }
 }
 
@@ -179,7 +179,7 @@ private fun writePeople(people: List<Person>): String = JSONArray().apply { peop
                 TransactionTool(SlateIcon.TRASH, "Delete transaction", destructive = true) { confirmDelete = true }
             }
         }
-        Text(money(tx.cents, tx.currency), style = MaterialTheme.typography.displayMedium)
+        Text(money(tx.cents, tx.currency).withRupeeFace(), style = MaterialTheme.typography.displayMedium)
         Caption(dateLabel(tx.createdAt) + (tx.placeName?.let { " · " + it } ?: ""))
         if (tx.kind == CategoryType.GROUP) Caption("Your share · " + money(tx.personalCost, tx.currency))
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -223,7 +223,7 @@ private fun writePeople(people: List<Person>): String = JSONArray().apply { peop
             }
         }
         tx.shares.forEach { share ->
-            HorizontalDivider()
+            SlateDivider()
             Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                 Text(share.person.name, style = MaterialTheme.typography.titleLarge)
                 Text(if (tx.kind == CategoryType.LENDING) {
@@ -252,9 +252,9 @@ private fun writePeople(people: List<Person>): String = JSONArray().apply { peop
                         Modifier.fillMaxWidth().heightIn(max = 580.dp), contentScale = ContentScale.Fit)
                     else Text("Photo unavailable")
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Action("‹", secondary = true, enabled = index > 0) { photoIndex = index - 1 }
+                        ActionIcon(SlateIcon.CHEVRON_LEFT, "Previous photo", enabled = index > 0) { photoIndex = index - 1 }
                         Text((index + 1).toString() + " / " + tx.images.size, Modifier.weight(1f), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-                        Action("›", secondary = true, enabled = index < tx.images.lastIndex) { photoIndex = index + 1 }
+                        ActionIcon(SlateIcon.CHEVRON_RIGHT, "Next photo", enabled = index < tx.images.lastIndex) { photoIndex = index + 1 }
                     }
                     Action("Close photo", secondary = true) { photoIndex = null }
                 }
@@ -331,7 +331,7 @@ private fun writePeople(people: List<Person>): String = JSONArray().apply { peop
         }, calendar.get(Calendar.YEAR), calendar.get(Calendar.MONTH), calendar.get(Calendar.DAY_OF_MONTH)).show()
     }
     Sheet("Edit transaction", dismiss) {
-        OutlinedTextField(amount, { amount = it; error = "" }, label = { Text("Amount") }, singleLine = true, enabled = !hasRepayments,
+        SlateTextField(amount, { amount = it; error = "" }, label = { Text("Amount") }, singleLine = true, enabled = !hasRepayments,
             keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal), modifier = Modifier.fillMaxWidth())
         if (tx.kind == CategoryType.EXPENSE) Box {
             Action("Category · " + selected.name, Modifier.fillMaxWidth(), secondary = true) { categoryMenu = true }
@@ -355,10 +355,10 @@ private fun writePeople(people: List<Person>): String = JSONArray().apply { peop
             }
         }
         if (selected.type != CategoryType.EXPENSE) {
-            OutlinedTextField(peopleText, { peopleText = it; error = "" }, label = { Text(if (selected.type == CategoryType.LENDING) "Person" else "People · one per line") },
+            SlateTextField(peopleText, { peopleText = it; error = "" }, label = { Text(if (selected.type == CategoryType.LENDING) "Person" else "People · one per line") },
                 enabled = !hasRepayments, modifier = Modifier.fillMaxWidth())
             if (selected.type == CategoryType.GROUP) {
-                Row(verticalAlignment = Alignment.CenterVertically) { Text("Include my share", Modifier.weight(1f)); Switch(includeMe, { includeMe = it }, enabled = !hasRepayments) }
+                Row(verticalAlignment = Alignment.CenterVertically) { Text("Include my share", Modifier.weight(1f)); SlateSwitch(includeMe, { includeMe = it }, enabled = !hasRepayments) }
                 if (!hasRepayments && people.isNotEmpty()) GroupSplitControls(cents ?: 0L, tx.currency, people, includeMe,
                     splitMode, { mode ->
                         splitMode = mode
@@ -383,9 +383,10 @@ private fun writePeople(people: List<Person>): String = JSONArray().apply { peop
         }
     }
 }
+@OptIn(ExperimentalLayoutApi::class)
 @Composable fun MethodChoice(method: String, change: (String) -> Unit) {
-    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        listOf("UPI", "Cash", "Bank", "Other").forEach { option -> Action(option, secondary = method != option) { change(option) } }
+    FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        listOf("UPI", "Cash", "Bank", "Other").forEach { option -> Action(option, secondary = method != option, compact = true) { change(option) } }
     }
 }
 @Composable private fun RepaymentSheet(share: Share, currency: Currency, dismiss: () -> Unit, save: (Long, String) -> Unit) {
@@ -394,13 +395,14 @@ private fun writePeople(people: List<Person>): String = JSONArray().apply { peop
     val cents = parseMoney(amount)
     Sheet("Received from " + share.person.name, dismiss) {
         Caption("Outstanding: " + money(share.outstanding, currency) + ". Enter all or part of this balance.")
-        OutlinedTextField(amount, { amount = it }, singleLine = true, label = { Text("Amount received") }, modifier = Modifier.fillMaxWidth().testTag("repaymentAmount"),
+        SlateTextField(amount, { amount = it }, singleLine = true, label = { Text("Amount received") }, modifier = Modifier.fillMaxWidth().testTag("repaymentAmount"),
             keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal))
         MethodChoice(method) { method = it }
         if (cents != null && cents > share.outstanding) Text("Amount exceeds the remaining balance.", color = MaterialTheme.colorScheme.error)
         Action("Record received", Modifier.fillMaxWidth(), enabled = cents != null && cents <= share.outstanding) { cents?.let { save(it, method) } }
     }
 }
+@OptIn(ExperimentalLayoutApi::class)
 @Composable fun SettingsScreen(settings: AppSettings, back: () -> Unit, update: ((AppSettings) -> AppSettings) -> Unit, categories: () -> Unit, export: () -> Unit, import: () -> Unit,
     assistantEnabled: Boolean, enableAssistant: () -> Unit, manageAssistant: () -> Unit, lock: (Boolean) -> Unit, testHaptic: () -> Unit) {
     val feedback = LocalFeedback.current
@@ -411,33 +413,33 @@ private fun writePeople(people: List<Person>): String = JSONArray().apply { peop
         item { SlateCard(onClick = { profile = true }) { Text(settings.profileName, style = MaterialTheme.typography.headlineMedium); Caption("Personal profile · stored on this device") } }
         item {
             Caption("APPEARANCE")
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Appearance.entries.forEach { mode -> Action(when (mode) { Appearance.MATTE -> "Matte Black"; Appearance.SILVER -> "Silver"; Appearance.SYSTEM -> "System" }, secondary = settings.appearance != mode) { update { it.copy(appearance = mode) } } }
             }
         }
         item { SlateCard {
             Text("Currency", style = MaterialTheme.typography.titleLarge)
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Currency.entries.forEach { currency -> Action(currency.name, secondary = settings.currency != currency) { update { it.copy(currency = currency) } } }
+            FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Currency.entries.forEach { currency -> Action(currency.name, secondary = settings.currency != currency, compact = true) { update { it.copy(currency = currency) } } }
             }
             Caption("New entries only · past values keep their currency")
         } }
         item { SlateCard {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Haptic feedback", Modifier.weight(1f))
-                Switch(settings.haptics, { checked -> update { it.copy(haptics = checked) }; if (checked) testHaptic() })
+                SlateSwitch(settings.haptics, { checked -> update { it.copy(haptics = checked) }; if (checked) testHaptic() })
             }
             Caption("Uses your device's touch vibration")
             Action("Test haptics", secondary = true, enabled = settings.haptics, onClick = testHaptic)
-            HorizontalDivider()
+            SlateDivider()
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Motion effects", Modifier.weight(1f))
-                Switch(settings.liquidPhysics, { feedback(); update { s -> s.copy(liquidPhysics = it) } })
+                SlateSwitch(settings.liquidPhysics, { feedback(); update { s -> s.copy(liquidPhysics = it) } })
             }
-            HorizontalDivider()
+            SlateDivider()
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Scrollable category list", Modifier.weight(1f))
-                Switch(settings.categoryListView, { checked -> feedback(); update { s -> s.copy(categoryListView = checked) } })
+                SlateSwitch(settings.categoryListView, { checked -> feedback(); update { s -> s.copy(categoryListView = checked) } })
             }
         } }
         item { SlateCard {
@@ -450,13 +452,13 @@ private fun writePeople(people: List<Person>): String = JSONArray().apply { peop
             Text("Privacy", style = MaterialTheme.typography.titleLarge)
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Save transaction location", Modifier.weight(1f))
-                Switch(settings.saveLocation, { checked -> feedback(); update { it.copy(saveLocation = checked) } })
+                SlateSwitch(settings.saveLocation, { checked -> feedback(); update { it.copy(saveLocation = checked) } })
             }
             Caption("Off by default. When on, Black Slate asks Android for a pin only while saving and names the area using the device geocoder.")
-            HorizontalDivider()
+            SlateDivider()
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Allow photo attachments", Modifier.weight(1f))
-                Switch(settings.allowPhotoAttachments, { checked -> feedback(); update { it.copy(allowPhotoAttachments = checked) } })
+                SlateSwitch(settings.allowPhotoAttachments, { checked -> feedback(); update { it.copy(allowPhotoAttachments = checked) } })
             }
             Caption("Photos are only added when you tap the camera. Existing photos remain local until their transaction is deleted.")
         } }
@@ -468,7 +470,7 @@ private fun writePeople(people: List<Person>): String = JSONArray().apply { peop
         item { SlateCard {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Power-button launch", Modifier.weight(1f))
-                Switch(assistantEnabled, { enabled -> if (enabled) enableAssistant() else manageAssistant() })
+                SlateSwitch(assistantEnabled, { enabled -> if (enabled) enableAssistant() else manageAssistant() })
             }
             Caption(if (assistantEnabled) "Black Slate is your default digital assistant. Hold power to open it."
                 else "Optional · choose Black Slate as your default digital assistant, then hold power to open it. This replaces Gemini or Google Assistant on the power button.")
@@ -479,7 +481,7 @@ private fun writePeople(people: List<Person>): String = JSONArray().apply { peop
         item { SlateCard {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("App lock", Modifier.weight(1f))
-                Switch(settings.appLock, { feedback(); lock(it) })
+                SlateSwitch(settings.appLock, { feedback(); lock(it) })
             }
             Caption("Uses your device PIN or password")
             Action("Export data (CSV)", Modifier.fillMaxWidth(), secondary = true, onClick = export)
@@ -491,7 +493,7 @@ private fun writePeople(people: List<Person>): String = JSONArray().apply { peop
     if (profile) {
         var name by rememberSaveable { mutableStateOf(settings.profileName) }
         Sheet("Your profile", { profile = false }) {
-            OutlinedTextField(name, { name = it }, label = { Text("Display name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            SlateTextField(name, { name = it }, label = { Text("Display name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
             Action("Save profile", Modifier.fillMaxWidth(), enabled = name.isNotBlank()) {
                 update { it.copy(profileName = name.trim()) }
                 profile = false
@@ -503,7 +505,7 @@ private fun writePeople(people: List<Person>): String = JSONArray().apply { peop
         val cents = parseMoney(budget)
         Sheet("Monthly budget", { budgetEditor = false }) {
             Caption("Black Slate measures out-of-pocket spending, including your share of a group expense.")
-            OutlinedTextField(budget, { budget = it }, label = { Text("Budget") }, singleLine = true,
+            SlateTextField(budget, { budget = it }, label = { Text("Budget") }, singleLine = true,
                 keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal), modifier = Modifier.fillMaxWidth())
             if (budget.isNotBlank() && cents == null) Text("Enter a positive amount with up to two decimal places.", color = MaterialTheme.colorScheme.error)
             Action("Save budget", Modifier.fillMaxWidth(), enabled = cents != null) { update { it.copy(monthlyBudgetCents = cents) }; budgetEditor = false }
@@ -580,7 +582,7 @@ private fun writePeople(people: List<Person>): String = JSONArray().apply { peop
         keyboard?.show()
     }
     Sheet(if (category == null) "New category" else "Edit category", dismiss) {
-        OutlinedTextField(name, { name = it }, label = { Text("Category name") }, singleLine = true,
+        SlateTextField(name, { name = it }, label = { Text("Category name") }, singleLine = true,
             modifier = Modifier.fillMaxWidth().focusRequester(focus).testTag("newCategoryName"))
         Action(if (category == null) "Create expense category" else "Save category", Modifier.fillMaxWidth(),
             enabled = name.isNotBlank()) { save(name) }

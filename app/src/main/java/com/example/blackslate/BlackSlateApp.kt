@@ -33,6 +33,7 @@ import androidx.core.view.WindowCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.example.blackslate.ui.theme.BlackSlateTheme
+import com.example.blackslate.ui.theme.pageEnd
 
 private const val DRAFT_UNDO_KEY = "__draft__"
 private data class DraftUndo(val amount: String, val note: String)
@@ -237,7 +238,7 @@ private data class DraftUndo(val amount: String, val note: String)
         }
         CompositionLocalProvider(LocalFeedback provides { feedback.pulse() },
             LocalContentColor provides MaterialTheme.colorScheme.onBackground) {
-            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(MaterialTheme.colorScheme.background, MaterialTheme.colorScheme.surfaceVariant)))) {
+            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(MaterialTheme.colorScheme.background, MaterialTheme.colorScheme.pageEnd)))) {
                 Column(Modifier.fillMaxSize().safeDrawingPadding().imePadding().padding(horizontal = 20.dp, vertical = 8.dp)) {
                     Box(Modifier.weight(1f)) {
                         when (route) {
@@ -285,8 +286,8 @@ private data class DraftUndo(val amount: String, val note: String)
                     }
                     if (!assistantLogOnly && (route == "home" || route == "insights") && !draggingHome) {
                         Row(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Action("◈  Log", Modifier.weight(1f), secondary = route != "home", onClick = { route = "home" })
-                            Action("↗  Insights", Modifier.weight(1f), secondary = route != "insights", onClick = { route = "insights" })
+                            Action("Log", Modifier.weight(1f), secondary = route != "home", icon = SlateIcon.BRAND, onClick = { route = "home" })
+                            Action("Insights", Modifier.weight(1f), secondary = route != "insights", icon = SlateIcon.ARROW_UP_RIGHT, onClick = { route = "insights" })
                         }
                     }
                 }

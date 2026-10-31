@@ -49,17 +49,17 @@ import java.util.Calendar
     LazyColumn(Modifier.fillMaxSize().testTag("spendingList"), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         item {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Action("‹", secondary = true, enabled = !allTime) { monthOffset-- }
+                ActionIcon(SlateIcon.CHEVRON_LEFT, "Previous month", enabled = !allTime) { monthOffset-- }
                 Text(if (allTime) "All time" else dateLabel(window.first, "MMMM yyyy"), Modifier.weight(1f).padding(horizontal = 10.dp), style = MaterialTheme.typography.titleLarge)
-                Action("›", secondary = true, enabled = !allTime && monthOffset < 0) { monthOffset++ }
+                ActionIcon(SlateIcon.CHEVRON_RIGHT, "Next month", enabled = !allTime && monthOffset < 0) { monthOffset++ }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Action("Month", secondary = allTime) { allTime = false }
                 Action("All time", secondary = !allTime) { allTime = true }
             }
         }
-        item {
-            Text(money(spending, currency), style = MaterialTheme.typography.displayMedium)
+        item { Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(money(spending, currency).withRupeeFace(), style = MaterialTheme.typography.displayMedium)
             Caption("YOUR SPENDING · expenses + your group share")
             if (!allTime && previousTotal > 0) Caption(
                 money(kotlin.math.abs(spending - previousTotal), currency) + (if (spending > previousTotal) " more" else " less") + " than the previous month")
@@ -70,7 +70,7 @@ import java.util.Calendar
                     color = if (over > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.secondary,
                     trackColor = MaterialTheme.colorScheme.surfaceVariant)
             }
-        }
+        } }
         item {
             SlateCard {
                 if (allTime) Row(Modifier.fillMaxWidth().clickable { showCategoryChart = !showCategoryChart },
@@ -104,7 +104,7 @@ import java.util.Calendar
             }
         }
         item {
-            OutlinedTextField(search, { search = it }, label = { Text("Search notes, people or categories") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            SlateTextField(search, { search = it }, label = { Text("Search notes, people or categories") }, singleLine = true, modifier = Modifier.fillMaxWidth())
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Checkbox(includeLending, { includeLending = it })
                 Caption("Include lending in history")
@@ -152,11 +152,11 @@ import java.util.Calendar
     LazyColumn(Modifier.fillMaxSize().testTag("ledgerList"), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         item { SlateCard {
             Caption("THEY OWE YOU")
-            Text(money(shares.sumOf { it.outstanding }, currency), style = MaterialTheme.typography.displayMedium, color = MaterialTheme.colorScheme.secondary)
+            Text(money(shares.sumOf { it.outstanding }, currency).withRupeeFace(), style = MaterialTheme.typography.displayMedium, color = MaterialTheme.colorScheme.secondary)
             Caption("Remaining lending + unpaid group shares. Settled amounts are excluded.")
         } }
         item {
-            OutlinedTextField(search, { search = it }, label = { Text("Find a person") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            SlateTextField(search, { search = it }, label = { Text("Find a person") }, singleLine = true, modifier = Modifier.fillMaxWidth())
             Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(showSettled, { showSettled = it }); Text("Show settled people") }
         }
         val visible = people.filter { p -> p.name.contains(search, true) && (showSettled || shares.any { it.person.id == p.id && it.outstanding > 0 }) }
@@ -200,7 +200,7 @@ import java.util.Calendar
             item {
                 SlateCard {
                     Caption("OWES YOU" + if (currency == Currency.INR) "" else " · " + currency.symbol)
-                    Text(money(txs.sumOf { tx -> tx.shares.first { it.person.id == personId }.outstanding }, currency), style = MaterialTheme.typography.headlineLarge, color = MaterialTheme.colorScheme.secondary)
+                    Text(money(txs.sumOf { tx -> tx.shares.first { it.person.id == personId }.outstanding }, currency).withRupeeFace(), style = MaterialTheme.typography.headlineLarge, color = MaterialTheme.colorScheme.secondary)
                     Caption("Received so far: " + money(txs.sumOf { tx -> tx.shares.first { it.person.id == personId }.received }, currency))
                     if ((balances[currency] ?: 0L) > 0L)
                         Action("Settle all", Modifier.fillMaxWidth().testTag("settleAll_${currency.name}")) { settleCurrency = currency }
@@ -211,7 +211,7 @@ import java.util.Calendar
         items(transactions, key = { it.id }) { tx ->
             val share = tx.shares.first { it.person.id == personId }
             SlateCard(onClick = { open(tx.id) }) {
-                Text((if (tx.kind == CategoryType.LENDING) "Lent" else "Group share") + " · " + money(share.cents, tx.currency), style = MaterialTheme.typography.titleLarge)
+                Text(((if (tx.kind == CategoryType.LENDING) "Lent" else "Group share") + " · " + money(share.cents, tx.currency)).withRupeeFace(), style = MaterialTheme.typography.titleLarge)
                 Caption(dateLabel(tx.createdAt) + if (tx.note.isNotBlank()) " · " + tx.note else "")
                 Text(if (tx.kind == CategoryType.LENDING) {
                     when { share.outstanding == 0L -> "Received ✓"; share.received > 0 -> "Partly received"; else -> "Awaiting repayment" }
@@ -224,7 +224,7 @@ import java.util.Calendar
         var method by rememberSaveable { mutableStateOf("UPI") }
         val count = transactions.count { it.currency == currency && it.shares.any { s -> s.person.id == personId && s.outstanding > 0 } }
         Sheet("Settle all with " + (person?.name ?: "this person"), { settleCurrency = null }) {
-            Text(money(balances[currency] ?: 0L, currency), style = MaterialTheme.typography.headlineLarge)
+            Text(money(balances[currency] ?: 0L, currency).withRupeeFace(), style = MaterialTheme.typography.headlineLarge)
             Caption("Mark $count pending transaction${if (count == 1) "" else "s"} as received.")
             MethodChoice(method) { method = it }
             Action("Confirm received", Modifier.fillMaxWidth()) { settleAll(currency, method); settleCurrency = null }
@@ -236,8 +236,8 @@ import java.util.Calendar
         Row {
             val primary = snapshot.categories.firstOrNull { it.id == tx.categoryId }?.name ?: "Transaction"
             val spendingCategory = tx.spendingCategoryId?.let { id -> snapshot.categories.firstOrNull { it.id == id }?.name }
-            Text(primary + if (spendingCategory != null && spendingCategory != primary) " · " + spendingCategory else "", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
-            Text(money(tx.cents, tx.currency))
+            Text(primary + if (spendingCategory != null && spendingCategory != primary) " · " + spendingCategory else "", Modifier.weight(1f).alignByBaseline(), style = MaterialTheme.typography.titleLarge)
+            Text(money(tx.cents, tx.currency), Modifier.alignByBaseline())
         }
         Caption(dateLabel(tx.createdAt) + if (tx.note.isBlank()) "" else " · " + tx.note)
         if (tx.shares.isNotEmpty()) Caption(tx.shares.joinToString(", ") { it.person.name } + " · " +

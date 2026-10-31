@@ -42,6 +42,7 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.*
+import com.example.blackslate.ui.theme.BodyFont
 import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -193,8 +194,11 @@ import kotlinx.coroutines.delay
         } else {
             Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(9.dp)) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text("◈  Black Slate", Modifier.weight(1f), style = MaterialTheme.typography.headlineMedium,
-                        color = MaterialTheme.colorScheme.onBackground)
+                    Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                        SlateGlyph(SlateIcon.BRAND, Modifier.size(22.dp), MaterialTheme.colorScheme.onBackground)
+                        Spacer(Modifier.width(10.dp))
+                        Text("Black Slate", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.onBackground)
+                    }
                     if (!logOnly) Action("Settings", secondary = true, onClick = onSettings)
                 }
                 Spacer(Modifier.height(18.dp))
@@ -205,11 +209,14 @@ import kotlinx.coroutines.delay
                     modifier = Modifier.fillMaxWidth().height(146.dp).onGloballyPositioned { amountRect = it.boundsInRoot() }
                         .graphicsLayer { translationX = with(density) { amountNudge.value.dp.toPx() } }.testTag("amountDrag")) {
                     Box(contentAlignment = Alignment.Center) {
+                        val compact = amount.length > 7
                         Row(verticalAlignment = Alignment.Top) {
-                            Text(snapshot.settings.currency.symbol, style = MaterialTheme.typography.headlineMedium,
-                                modifier = Modifier.padding(top = 19.dp, end = 6.dp))
+                            // The symbol is set in Helvetica (NType 82 has no rupee) and seated against the digits' cap height,
+                            // so it stays aligned when a long amount drops to the smaller size.
+                            Text(snapshot.settings.currency.symbol, style = MaterialTheme.typography.headlineMedium.copy(fontFamily = BodyFont),
+                                modifier = Modifier.padding(top = if (compact) 6.dp else 9.dp, end = 6.dp))
                             Text(amount.ifBlank { "0" }, style = MaterialTheme.typography.displayLarge.copy(
-                                fontSize = if (amount.length > 7) 48.sp else 72.sp),
+                                fontSize = if (compact) 48.sp else 72.sp, lineHeight = if (compact) 54.sp else 76.sp),
                                 maxLines = 1, color = if (amount.isBlank()) MaterialTheme.colorScheme.onSurfaceVariant
                                     else MaterialTheme.colorScheme.onSurface)
                         }
@@ -217,7 +224,7 @@ import kotlinx.coroutines.delay
                 }
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
                     val colors = MaterialTheme.colorScheme
-                    val noteShape = RoundedCornerShape(13.dp)
+                    val noteShape = RoundedCornerShape(12.dp)
                     Box(Modifier.width(210.dp).height(50.dp).border(1.dp, colors.outline.copy(alpha = .58f), noteShape)
                         .testTag("homeNote")) {
                         BasicTextField(note, onNote, singleLine = true,
@@ -270,6 +277,7 @@ import kotlinx.coroutines.delay
                                 color = if (key == "⌫") MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.surface,
                                 contentColor = if (key == "⌫") MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
                                 shadowElevation = 3.dp, modifier = Modifier.weight(1f).height(54.dp).testTag("key_$key")
+                                    .semantics { if (key == "⌫") contentDescription = "Delete" }
                                     .clickable(enabled = !busy) {
                                         feedback()
                                         val next = when (key) {
@@ -281,7 +289,8 @@ import kotlinx.coroutines.delay
                                             next.substringBefore('.').length <= 8) onAmount(next)
                                     }) {
                                 Box(contentAlignment = Alignment.Center) {
-                                    Text(key, style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.onSurface)
+                                    if (key == "⌫") SlateGlyph(SlateIcon.BACKSPACE, Modifier.size(30.dp), MaterialTheme.colorScheme.onSurface)
+                                    else Text(key, style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.onSurface)
                                 }
                             }
                         }
@@ -324,7 +333,7 @@ import kotlinx.coroutines.delay
         shadowElevation = 2.dp, border = BorderStroke(1.dp, scheme.outline), modifier = modifier) {
         Column(Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 10.dp), verticalArrangement = Arrangement.Center) {
             Caption("AMOUNT")
-            Text(value, style = MaterialTheme.typography.headlineMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(value.withRupeeFace(), style = MaterialTheme.typography.headlineMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }
