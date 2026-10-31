@@ -46,10 +46,13 @@ private fun writePeople(people: List<Person>): String = JSONArray().apply { peop
     var error by rememberSaveable { mutableStateOf("") }
     var splitMode by rememberSaveable { mutableStateOf(SplitMode.EQUAL) }
     var splitValues by rememberSaveable { mutableStateOf(mapOf<String, String>()) }
+    // Read the people from the saved state, not from the `people` captured above: the contact picker's result callback can run a
+    // stale copy of this function, which then saw no one and replaced everyone already added with the contact.
     fun add(person: Person) {
-        if (people.any { it.id == person.id }) { error = "This person is already included."; return }
+        val current = readPeople(peopleRaw)
+        if (current.any { it.id == person.id }) { error = "This person is already included."; return }
         val known = recent.firstOrNull { it.id == person.id } ?: person
-        peopleRaw = writePeople(if (category.type == CategoryType.LENDING) listOf(known) else people + known)
+        peopleRaw = writePeople(if (category.type == CategoryType.LENDING) listOf(known) else current + known)
         name = ""; error = ""; feedback()
     }
     val contactPicker = rememberLauncherForActivityResult(PickContactPhone()) { uri ->
@@ -62,80 +65,101 @@ private fun writePeople(people: List<Person>): String = JSONArray().apply { peop
         else groupShares(cents, people, includeMe, splitMode, splitValues)
     }
     val shares = splitResult.getOrDefault(emptyList())
+    val isLending = category.type == CategoryType.LENDING
     val availableRecent = recent.filterNot { candidate -> people.any { it.id == candidate.id } }
-    Sheet(if (category.type == CategoryType.LENDING) "Lend " + money(cents, currency) else "Split " + money(cents, currency), dismiss) {
-        Action("Choose contact", Modifier.fillMaxWidth(), secondary = true) {
-            contactPicker.launch(null)
+    val joinsSplit = includeMe && !isLending
+    val myShare = cents - shares.sumOf { it.cents }
+    val failed = people.isNotEmpty() && splitResult.isFailure
+    val participantIds = (if (joinsSplit) listOf(SELF_SPLIT_ID) else emptyList()) + people.map { it.id }
+    val entered = participantIds.sumOf { parseMoney(splitValues[it].orEmpty()) ?: 0L }
+    val partsTotal = runCatching { participantIds.fold(java.math.BigDecimal.ZERO) { sum, id -> sum + java.math.BigDecimal(splitValues[id] ?: "1") } }.getOrNull()
+    val headcount = people.size + if (joinsSplit) 1 else 0
+    val (summary, summaryIsError) = when {
+        isLending -> (if (people.isEmpty()) "Choose who you're lending to" else "Lending to " + people.first().name) to false
+        people.isEmpty() -> "" to false
+        splitMode == SplitMode.AMOUNTS -> when {
+            cents - entered > 0 -> money(cents - entered, currency) + " left to assign" to true
+            cents - entered < 0 -> money(entered - cents, currency) + " over total" to true
+            else -> "Total matches · " + money(cents, currency) to false
         }
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Caption("RECENT PEOPLE")
-            if (availableRecent.isEmpty()) Caption("No recent people yet")
-            else FlowChoices(availableRecent.map { it.id to it.name }) { id ->
+        splitResult.isFailure -> (splitResult.exceptionOrNull()?.message ?: "Check the split.") to true
+        splitMode == SplitMode.PARTS -> headcount.toString() + " people · " + (partsTotal?.stripTrailingZeros()?.toPlainString() ?: "?") + " parts" to false
+        else -> (if (cents % headcount != 0L) "≈ " else "") + money((cents + headcount - 1) / headcount, currency) + " each" to false
+    }
+    val cardFooter = when {
+        people.isEmpty() || isLending -> null
+        splitMode == SplitMode.AMOUNTS -> "Assigned " + money(entered, currency) + " of " + money(cents, currency)
+        splitMode == SplitMode.PARTS && !failed && partsTotal != null && partsTotal.signum() > 0 ->
+            partsTotal.stripTrailingZeros().toPlainString() + " parts · " +
+                money(java.math.BigDecimal(cents).divide(partsTotal, 0, java.math.RoundingMode.HALF_UP).toLong(), currency) + " per part"
+        else -> null
+    }
+    fun amountOf(personId: String?): String =
+        if (failed) "—" else money(if (personId == null) myShare else shares.firstOrNull { it.person.id == personId }?.cents ?: 0, currency)
+    fun valueOf(id: String): String = splitValues[id] ?: if (splitMode == SplitMode.PARTS) "1" else ""
+    Sheet("", dismiss, showTitle = false, spacing = 18.dp, footer = {
+        Action(if (isLending) "Save lending" else "Save group expense", Modifier.fillMaxWidth().testTag("saveShared"),
+            enabled = people.isNotEmpty() && shares.isNotEmpty() && shares.all { it.cents > 0 }) { save(shares, spendingCategoryId) }
+    }) {
+        ShareSheetHeader((if (isLending) "Lend " else "Split ") + money(cents, currency),
+            summary, summaryIsError, dismiss)
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            PersonField(name, { name = it }, onAdd = { add(newPerson(name)) }, onContacts = { contactPicker.launch(null) })
+            if (availableRecent.isNotEmpty()) ScrollingChoices(availableRecent.map { it.id to it.name }, lead = "Recent", plus = true) { id ->
                 availableRecent.firstOrNull { it.id == id }?.let(::add)
             }
         }
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            CompactInput(name, { name = it }, "Name", Modifier.weight(1f), inputModifier = Modifier.testTag("personName"))
-            Action("Add person", enabled = name.isNotBlank(), secondary = true) { add(newPerson(name)) }
-        }
-        if (people.isNotEmpty()) {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Caption("ADDED PEOPLE")
-                FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    people.forEach { person ->
-                        CompactChoice(person.name + " · " + money(shares.firstOrNull { it.person.id == person.id }?.cents ?: 0, currency) + " ×",
-                            selected = true) { peopleRaw = writePeople(people.filterNot { it.id == person.id }) }
+        SplitCard {
+            if (isLending) {
+                val person = people.firstOrNull()
+                if (person == null) EmptyShareHint("No one chosen yet")
+                else ShareRow(person.id, person.name, isMe = false, included = true, mode = SplitMode.EQUAL, symbol = currency.symbol,
+                    amount = money(cents, currency), value = "", changeValue = {}, onRemove = { peopleRaw = writePeople(emptyList()) })
+            } else {
+                if (people.isNotEmpty()) {
+                    SplitModeTabs(splitMode) { mode ->
+                        splitMode = mode
+                        splitValues = if (mode == SplitMode.AMOUNTS) shares.associate { it.person.id to java.math.BigDecimal(it.cents).movePointLeft(2).toPlainString() } +
+                            (SELF_SPLIT_ID to java.math.BigDecimal(myShare).movePointLeft(2).toPlainString()) else emptyMap()
                     }
+                    Spacer(Modifier.height(4.dp))
                 }
+                ShareRow(SELF_SPLIT_ID, "You", isMe = true, included = includeMe, mode = splitMode, symbol = currency.symbol,
+                    amount = amountOf(null), value = valueOf(SELF_SPLIT_ID), changeValue = { splitValues = splitValues + (SELF_SPLIT_ID to it) },
+                    caption = when {
+                        !includeMe -> "Left out · tap to include"
+                        people.isEmpty() -> "Tap to leave out"
+                        else -> null
+                    }, onToggleMe = { includeMe = it })
+                people.forEach { person ->
+                    SlateDivider()
+                    ShareRow(person.id, person.name, isMe = false, included = true, mode = splitMode, symbol = currency.symbol,
+                        amount = amountOf(person.id), value = valueOf(person.id), changeValue = { splitValues = splitValues + (person.id to it) },
+                        onRemove = { peopleRaw = writePeople(people.filterNot { it.id == person.id }) })
+                }
+                if (people.isEmpty()) { Spacer(Modifier.height(4.dp)); EmptyShareHint("Add someone to start splitting") }
+                if (cardFooter != null) { Spacer(Modifier.height(4.dp)); Caption(cardFooter, Modifier.padding(horizontal = 4.dp)) }
             }
         }
-        if (category.type == CategoryType.GROUP) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text("Include my share")
-                    if (shares.isNotEmpty()) Caption("Your share · " + money(cents - shares.sumOf { it.cents }, currency))
-                }
-                SlateSwitch(includeMe, { feedback(); includeMe = it })
-            }
-            if (people.isNotEmpty()) Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                GroupSplitControls(cents, currency, people, includeMe, splitMode, { mode ->
-                    splitMode = mode
-                    splitValues = if (mode == SplitMode.AMOUNTS) shares.associate { it.person.id to java.math.BigDecimal(it.cents).movePointLeft(2).toPlainString() } +
-                        (SELF_SPLIT_ID to java.math.BigDecimal(cents - shares.sumOf { it.cents }).movePointLeft(2).toPlainString()) else emptyMap()
-                }, splitValues, { id, value -> splitValues = splitValues + (id to value) })
-            }
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Caption("SPENDING CATEGORY · OPTIONAL")
-                FlowChoices(listOf("" to "None") + expenseCategories.map { it.id to it.name }, spendingCategoryId) { id ->
-                    spendingCategoryId = id.ifEmpty { null }
-                }
+        if (!isLending) Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Caption("CATEGORY")
+            ScrollingChoices(listOf("" to "None") + expenseCategories.map { it.id to it.name }, selected = spendingCategoryId) { id ->
+                spendingCategoryId = id.ifEmpty { null }
             }
         }
-        if (category.type == CategoryType.GROUP && people.isNotEmpty() && splitResult.isFailure)
-            Caption(splitResult.exceptionOrNull()?.message ?: "Check the split.")
         if (error.isNotBlank()) Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-        Action(if (category.type == CategoryType.LENDING) "Save lending" else "Save group expense", Modifier.fillMaxWidth().testTag("saveShared"),
-            enabled = people.isNotEmpty() && shares.isNotEmpty() && shares.all { it.cents > 0 }) { save(shares, spendingCategoryId) }
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
-@Composable private fun FlowChoices(choices: List<Pair<String, String>>, selected: String? = null, onClick: (String) -> Unit) {
-    FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        choices.forEach { (id, label) ->
-            CompactChoice(label, selected == id || (selected == null && id.isEmpty())) { onClick(id) }
-        }
-    }
-}
-
-@Composable private fun CompactChoice(label: String, selected: Boolean = false, onClick: () -> Unit) {
+@Composable internal fun CompactChoice(label: String, selected: Boolean = false, icon: SlateIcon? = null, onClick: () -> Unit) {
     val colors = MaterialTheme.colorScheme
     Surface(shape = RoundedCornerShape(12.dp),
         color = if (selected) colors.secondaryContainer else colors.surfaceVariant,
         contentColor = if (selected) colors.onSecondaryContainer else colors.onSurfaceVariant,
         border = BorderStroke(1.dp, if (selected) colors.secondary else colors.outline),
         modifier = Modifier.height(34.dp).clickable(onClick = onClick)) {
-        Box(Modifier.padding(horizontal = 11.dp), contentAlignment = Alignment.Center) {
+        Row(Modifier.padding(horizontal = 11.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            if (icon != null) SlateGlyph(icon, Modifier.size(12.dp))
             Text(label, style = MaterialTheme.typography.labelMedium, maxLines = 1)
         }
     }
@@ -400,117 +424,6 @@ private fun writePeople(people: List<Person>): String = JSONArray().apply { peop
         MethodChoice(method) { method = it }
         if (cents != null && cents > share.outstanding) Text("Amount exceeds the remaining balance.", color = MaterialTheme.colorScheme.error)
         Action("Record received", Modifier.fillMaxWidth(), enabled = cents != null && cents <= share.outstanding) { cents?.let { save(it, method) } }
-    }
-}
-@OptIn(ExperimentalLayoutApi::class)
-@Composable fun SettingsScreen(settings: AppSettings, back: () -> Unit, update: ((AppSettings) -> AppSettings) -> Unit, categories: () -> Unit, export: () -> Unit, import: () -> Unit,
-    assistantEnabled: Boolean, enableAssistant: () -> Unit, manageAssistant: () -> Unit, lock: (Boolean) -> Unit, testHaptic: () -> Unit) {
-    val feedback = LocalFeedback.current
-    var profile by rememberSaveable { mutableStateOf(false) }
-    var budgetEditor by rememberSaveable { mutableStateOf(false) }
-    LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        item { PageHeader("Settings", back) }
-        item { SlateCard(onClick = { profile = true }) { Text(settings.profileName, style = MaterialTheme.typography.headlineMedium); Caption("Personal profile · stored on this device") } }
-        item {
-            Caption("APPEARANCE")
-            FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Appearance.entries.forEach { mode -> Action(when (mode) { Appearance.MATTE -> "Matte Black"; Appearance.SILVER -> "Silver"; Appearance.SYSTEM -> "System" }, secondary = settings.appearance != mode) { update { it.copy(appearance = mode) } } }
-            }
-        }
-        item { SlateCard {
-            Text("Currency", style = MaterialTheme.typography.titleLarge)
-            FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Currency.entries.forEach { currency -> Action(currency.name, secondary = settings.currency != currency, compact = true) { update { it.copy(currency = currency) } } }
-            }
-            Caption("New entries only · past values keep their currency")
-        } }
-        item { SlateCard {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Haptic feedback", Modifier.weight(1f))
-                SlateSwitch(settings.haptics, { checked -> update { it.copy(haptics = checked) }; if (checked) testHaptic() })
-            }
-            Caption("Uses your device's touch vibration")
-            Action("Test haptics", secondary = true, enabled = settings.haptics, onClick = testHaptic)
-            SlateDivider()
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Motion effects", Modifier.weight(1f))
-                SlateSwitch(settings.liquidPhysics, { feedback(); update { s -> s.copy(liquidPhysics = it) } })
-            }
-            SlateDivider()
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Scrollable category list", Modifier.weight(1f))
-                SlateSwitch(settings.categoryListView, { checked -> feedback(); update { s -> s.copy(categoryListView = checked) } })
-            }
-        } }
-        item { SlateCard {
-            Text("Monthly budget", style = MaterialTheme.typography.titleLarge)
-            val budget = settings.monthlyBudgetCents
-            Caption(if (budget == null) "No spending guardrail set" else money(budget, settings.currency) + " each month")
-            Action(if (budget == null) "Set budget" else "Edit budget", Modifier.fillMaxWidth(), secondary = true) { budgetEditor = true }
-        } }
-        item { SlateCard {
-            Text("Privacy", style = MaterialTheme.typography.titleLarge)
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Save transaction location", Modifier.weight(1f))
-                SlateSwitch(settings.saveLocation, { checked -> feedback(); update { it.copy(saveLocation = checked) } })
-            }
-            Caption("Off by default. When on, Black Slate asks Android for a pin only while saving and names the area using the device geocoder.")
-            SlateDivider()
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Allow photo attachments", Modifier.weight(1f))
-                SlateSwitch(settings.allowPhotoAttachments, { checked -> feedback(); update { it.copy(allowPhotoAttachments = checked) } })
-            }
-            Caption("Photos are only added when you tap the camera. Existing photos remain local until their transaction is deleted.")
-        } }
-        item { Action("Manage categories", Modifier.fillMaxWidth(), secondary = true, onClick = categories) }
-        item { SlateCard {
-            Text("Quick open", style = MaterialTheme.typography.titleLarge)
-            Caption("Long-press the Black Slate app icon, then tap Open Black Slate.")
-        } }
-        item { SlateCard {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Power-button launch", Modifier.weight(1f))
-                SlateSwitch(assistantEnabled, { enabled -> if (enabled) enableAssistant() else manageAssistant() })
-            }
-            Caption(if (assistantEnabled) "Black Slate is your default digital assistant. Hold power to open it."
-                else "Optional · choose Black Slate as your default digital assistant, then hold power to open it. This replaces Gemini or Google Assistant on the power button.")
-            Caption("Black Slate never listens or reads the screen in this mode.")
-            Action(if (assistantEnabled) "Change default assistant" else "Enable power-button launch", Modifier.fillMaxWidth(), secondary = true,
-                onClick = if (assistantEnabled) manageAssistant else enableAssistant)
-        } }
-        item { SlateCard {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("App lock", Modifier.weight(1f))
-                SlateSwitch(settings.appLock, { feedback(); lock(it) })
-            }
-            Caption("Uses your device PIN or password")
-            Action("Export data (CSV)", Modifier.fillMaxWidth(), secondary = true, onClick = export)
-            Action("Restore data (CSV)", Modifier.fillMaxWidth(), secondary = true, onClick = import)
-            Caption("Restore merges transactions, contacts and locations · photos stay in the app")
-        } }
-        item { Caption("Black Slate · local-first. No account, server or bank connection."); Spacer(Modifier.height(12.dp)) }
-    }
-    if (profile) {
-        var name by rememberSaveable { mutableStateOf(settings.profileName) }
-        Sheet("Your profile", { profile = false }) {
-            SlateTextField(name, { name = it }, label = { Text("Display name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-            Action("Save profile", Modifier.fillMaxWidth(), enabled = name.isNotBlank()) {
-                update { it.copy(profileName = name.trim()) }
-                profile = false
-            }
-        }
-    }
-    if (budgetEditor) {
-        var budget by rememberSaveable { mutableStateOf(settings.monthlyBudgetCents?.let { java.math.BigDecimal(it).movePointLeft(2).toPlainString() }.orEmpty()) }
-        val cents = parseMoney(budget)
-        Sheet("Monthly budget", { budgetEditor = false }) {
-            Caption("Black Slate measures out-of-pocket spending, including your share of a group expense.")
-            SlateTextField(budget, { budget = it }, label = { Text("Budget") }, singleLine = true,
-                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal), modifier = Modifier.fillMaxWidth())
-            if (budget.isNotBlank() && cents == null) Text("Enter a positive amount with up to two decimal places.", color = MaterialTheme.colorScheme.error)
-            Action("Save budget", Modifier.fillMaxWidth(), enabled = cents != null) { update { it.copy(monthlyBudgetCents = cents) }; budgetEditor = false }
-            if (settings.monthlyBudgetCents != null) Action("Remove budget", Modifier.fillMaxWidth(), secondary = true) { update { it.copy(monthlyBudgetCents = null) }; budgetEditor = false }
-        }
     }
 }
 @Composable fun CategoriesScreen(snapshot: FinanceSnapshot, back: () -> Unit, add: () -> Unit,

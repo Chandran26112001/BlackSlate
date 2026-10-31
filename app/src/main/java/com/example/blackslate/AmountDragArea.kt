@@ -269,7 +269,8 @@ import kotlinx.coroutines.delay
                     BudgetProgress(monthlySpending, budget, snapshot.settings.currency, Modifier.fillMaxWidth())
                 }
                 Spacer(Modifier.weight(1f))
-                if (!noteFocused) {
+                // Any keyboard hides the keypad, not just the note field's: with the keyboard up for a sheet, the keypad squashed behind it.
+                if (!noteFocused && !imeVisible) {
                 listOf(listOf("1","2","3"), listOf("4","5","6"), listOf("7","8","9"), listOf(".","0","⌫")).forEach { row ->
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         row.forEach { key ->

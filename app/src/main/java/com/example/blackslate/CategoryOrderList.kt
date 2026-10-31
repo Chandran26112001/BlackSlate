@@ -26,9 +26,12 @@ import kotlinx.coroutines.delay
 
 @Composable fun CategoryOrderList(categories: List<Category>, back: () -> Unit, add: () -> Unit,
     saveOrder: (List<String>) -> Unit, content: @Composable RowScope.(Category) -> Unit) {
-    var ordered by remember(categories) { mutableStateOf(categories) }
+    // One state object for the life of the screen. Re-creating it whenever the saved order changed left the drag handlers
+    // reordering a stale copy, so only the first drag after opening the screen ever moved anything.
+    var ordered by remember { mutableStateOf(categories) }
     val listState = rememberLazyListState()
     var draggingId by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(categories) { if (draggingId == null) ordered = categories }
     var dragY by remember { mutableFloatStateOf(0f) }
     val feedback = LocalFeedback.current
     val density = LocalDensity.current

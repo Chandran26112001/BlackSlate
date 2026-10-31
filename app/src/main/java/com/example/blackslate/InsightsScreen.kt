@@ -104,7 +104,7 @@ import java.util.Calendar
             }
         }
         item {
-            SlateTextField(search, { search = it }, label = { Text("Search notes, people or categories") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            SlateTextField(search, { search = it }, placeholder = { Text("Search notes, people or categories") }, singleLine = true, modifier = Modifier.fillMaxWidth())
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Checkbox(includeLending, { includeLending = it })
                 Caption("Include lending in history")
@@ -156,7 +156,7 @@ import java.util.Calendar
             Caption("Remaining lending + unpaid group shares. Settled amounts are excluded.")
         } }
         item {
-            SlateTextField(search, { search = it }, label = { Text("Find a person") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            SlateTextField(search, { search = it }, placeholder = { Text("Find a person") }, singleLine = true, modifier = Modifier.fillMaxWidth())
             Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(showSettled, { showSettled = it }); Text("Show settled people") }
         }
         val visible = people.filter { p -> p.name.contains(search, true) && (showSettled || shares.any { it.person.id == p.id && it.outstanding > 0 }) }

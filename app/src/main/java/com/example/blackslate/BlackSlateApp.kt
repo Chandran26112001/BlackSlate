@@ -262,7 +262,7 @@ private data class DraftUndo(val amount: String, val note: String)
                                     val manager = context.getSystemService(android.app.KeyguardManager::class.java)
                                     if (enabled && !manager.isDeviceSecure) notify("Set a device PIN or password in Android settings first.")
                                     else safely { if (onLockChange != null) onLockChange(enabled) else store.updateSettings { it.copy(appLock = enabled) } }
-                                }, { feedback.pulse(true) })
+                                }, { feedback.pulse(true) }, snapshot.categories, monthlySpending)
                             "categories" -> CategoriesScreen(snapshot, { back() }, { createForAmount = false; newCategory = true },
                                 { category, name ->
                                     runCatching { store.renameCategory(category, name) }

@@ -52,7 +52,7 @@ class BlackSlateFlowTest {
         tap("Settings")
         tap("Matte Black")
         compose.runOnIdle { assertEquals(Appearance.MATTE, store.snapshot.settings.appearance) }
-        compose.onNodeWithText("Manage categories").performScrollTo().performClick()
+        compose.onNodeWithTag("settingsCategories").performScrollTo().performClick()
         compose.onNodeWithText("Categories").assertIsDisplayed()
         Espresso.pressBack()
         compose.onNodeWithText("Settings").assertIsDisplayed()
@@ -66,9 +66,9 @@ class BlackSlateFlowTest {
         tap("Choose category")
         tap("Group Expense")
         compose.onNodeWithTag("personName").performTextInput("Alice")
-        tap("Add person")
+        tap("Add")
         compose.onNodeWithTag("personName").performScrollTo().performTextInput("Bob")
-        tap("Add person")
+        tap("Add")
         tap("Save group expense")
         compose.waitUntil(12000) { store.snapshot.transactions.size == 1 }
         compose.runOnIdle {

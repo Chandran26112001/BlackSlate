@@ -13,6 +13,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.*
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.draw.dropShadow
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
@@ -76,15 +77,23 @@ fun String.withRupeeFace(): AnnotatedString = buildAnnotatedString {
         uncheckedThumbColor = c.outline, uncheckedTrackColor = c.surfaceVariant, uncheckedBorderColor = c.outline))
 }
 @Composable fun SlateDivider() = HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = .5f))
-/** The one text field for labelled input: Material's outlined field, with the app's 12px corners and surface fill. */
+/**
+ * The one text field: Material's outlined field with the app's 12px corners and surface fill.
+ * A [label] is set as a caption above the field rather than floating on its border, because the floating label's notch
+ * showed a patch of the field's lighter fill against the sheet; a [placeholder] stays inside the field.
+ */
 @Composable fun SlateTextField(value: String, onValueChange: (String) -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true,
-    label: @Composable (() -> Unit)? = null, singleLine: Boolean = false, keyboardOptions: KeyboardOptions = KeyboardOptions.Default) {
+    label: @Composable (() -> Unit)? = null, placeholder: @Composable (() -> Unit)? = null, singleLine: Boolean = false,
+    keyboardOptions: KeyboardOptions = KeyboardOptions.Default) {
     val c = MaterialTheme.colorScheme
-    OutlinedTextField(value, onValueChange, modifier, enabled = enabled, label = label, singleLine = singleLine, keyboardOptions = keyboardOptions,
-        shape = RoundedCornerShape(12.dp), colors = OutlinedTextFieldDefaults.colors(
-            focusedContainerColor = c.surface, unfocusedContainerColor = c.surface, disabledContainerColor = c.surface,
-            focusedBorderColor = c.primary, unfocusedBorderColor = c.outline, disabledBorderColor = c.outline.copy(alpha = .5f),
-            focusedLabelColor = c.onSurfaceVariant, unfocusedLabelColor = c.onSurfaceVariant, cursorColor = c.onSurface))
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        if (label != null) CompositionLocalProvider(LocalTextStyle provides MaterialTheme.typography.bodySmall.copy(color = c.onSurfaceVariant)) { label() }
+        OutlinedTextField(value, onValueChange, modifier, enabled = enabled, placeholder = placeholder, singleLine = singleLine, keyboardOptions = keyboardOptions,
+            textStyle = MaterialTheme.typography.bodyLarge, shape = RoundedCornerShape(12.dp), colors = OutlinedTextFieldDefaults.colors(
+                focusedContainerColor = c.surface, unfocusedContainerColor = c.surface, disabledContainerColor = c.surface,
+                focusedBorderColor = c.primary, unfocusedBorderColor = c.outline, disabledBorderColor = c.outline.copy(alpha = .5f),
+                focusedPlaceholderColor = c.onSurfaceVariant, unfocusedPlaceholderColor = c.onSurfaceVariant, cursorColor = c.onSurface))
+    }
 }
 @Composable fun SlateCard(modifier: Modifier = Modifier, onClick: (() -> Unit)? = null, content: @Composable ColumnScope.() -> Unit) {
     val pulse = LocalFeedback.current
@@ -123,10 +132,22 @@ fun String.withRupeeFace(): AnnotatedString = buildAnnotatedString {
         if (selected) SlateGlyph(SlateIcon.SAVE, Modifier.size(18.dp), colors.secondary)
     }, modifier = Modifier.heightIn(min = 48.dp), contentPadding = PaddingValues(horizontal = 18.dp))
 }
-@Composable fun Sheet(title: String, onDismiss: () -> Unit, showTitle: Boolean = true, content: @Composable ColumnScope.() -> Unit) {
+/** A sheet with a pinned [footer] keeps its main action in view while [content] scrolls; it brings its own header and close, so it has no Close button. */
+@Composable fun Sheet(title: String, onDismiss: () -> Unit, showTitle: Boolean = true, footer: (@Composable ColumnScope.() -> Unit)? = null,
+    spacing: Dp = 12.dp, content: @Composable ColumnScope.() -> Unit) {
     Dialog(onDismissRequest = onDismiss) {
         Surface(shape = RoundedCornerShape(28.dp), tonalElevation = 6.dp) {
-            Column(Modifier.fillMaxWidth().heightIn(max = 660.dp).imePadding().verticalScroll(rememberScrollState()).padding(22.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            if (footer != null) {
+                Column(Modifier.fillMaxWidth().heightIn(max = 660.dp).imePadding().padding(22.dp), verticalArrangement = Arrangement.spacedBy(spacing)) {
+                    Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(spacing)) {
+                        if (showTitle) Text(title.withRupeeFace(), style = MaterialTheme.typography.headlineMedium)
+                        content()
+                    }
+                    footer()
+                }
+                return@Surface
+            }
+            Column(Modifier.fillMaxWidth().heightIn(max = 660.dp).imePadding().verticalScroll(rememberScrollState()).padding(22.dp), verticalArrangement = Arrangement.spacedBy(spacing)) {
                 if (showTitle) Text(title.withRupeeFace(), style = MaterialTheme.typography.headlineMedium)
                 content()
                 Action("Close", Modifier.fillMaxWidth(), secondary = true, onClick = onDismiss)
@@ -180,12 +201,13 @@ data class Notice(
                 // reserved for a successful transaction, where Undo/Edit are available.
                 delay(3000)
             } else {
-                val startedAt = android.os.SystemClock.uptimeMillis()
+                // Advance once per frame from the frame clock. A 50 ms delay loop moved the bar at only 20 steps a second,
+                // which looked choppy; this stays smooth and ignores the system animation scale, so it still times 3 seconds.
+                val startedAt = withFrameNanos { it }
                 while (true) {
-                    delay(50)
-                    val elapsed = android.os.SystemClock.uptimeMillis() - startedAt
+                    val elapsed = (withFrameNanos { it } - startedAt) / 1_000_000f
                     progress = (1f - elapsed / 3000f).coerceIn(0f, 1f)
-                    if (elapsed >= 3000L) break
+                    if (elapsed >= 3000f) break
                 }
             }
             visible = false
@@ -253,7 +275,8 @@ data class Notice(
                         }
                     }
                 if (undoIdFor(current) != null) {
-                    Canvas(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(2.dp).padding(horizontal = 20.dp).testTag("snackbarProgress")) {
+                    // Its own layer: the bar redraws every frame, and without one the whole card (two blurred shadows, gradient, border) redrew with it.
+                    Canvas(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(2.dp).graphicsLayer().padding(horizontal = 20.dp).testTag("snackbarProgress")) {
                         drawLine(accent.copy(alpha = .12f), androidx.compose.ui.geometry.Offset.Zero,
                             androidx.compose.ui.geometry.Offset(size.width, 0f), 2.dp.toPx(), cap = StrokeCap.Round)
                         if (progress > 0f) drawLine(accent, androidx.compose.ui.geometry.Offset.Zero,
@@ -312,7 +335,8 @@ private fun undoIdFor(notice: Notice?): String? = notice?.undoKey ?: notice?.tra
     }
 }
 
-enum class SlateIcon { CAMERA, LOCATION, TRASH, EDIT, SAVE, CHEVRON_LEFT, CHEVRON_RIGHT, ARROW_UP_RIGHT, BRAND, BACKSPACE }
+enum class SlateIcon { CAMERA, LOCATION, TRASH, EDIT, SAVE, CHEVRON_LEFT, CHEVRON_RIGHT, ARROW_UP_RIGHT, BRAND, BACKSPACE, CLOSE, PLUS, MINUS, PERSON, PERSON_ADD,
+    POWER, WALLET, GRID, CASH, LOCK, HAPTIC, MOTION, LIST, DOWNLOAD, UPLOAD, APP_ICON }
 @Composable fun IconAction(icon: SlateIcon, label: String, onClick: () -> Unit, modifier: Modifier = Modifier, showLabel: Boolean = true,
     enabled: Boolean = true, iconSize: Dp = 20.dp, tint: Color = MaterialTheme.colorScheme.onSurface) {
     val feedback = LocalFeedback.current
@@ -402,6 +426,94 @@ enum class SlateIcon { CAMERA, LOCATION, TRASH, EDIT, SAVE, CHEVRON_LEFT, CHEVRO
                 SlateIcon.SAVE -> {
                     drawLine(ink, androidx.compose.ui.geometry.Offset(w * .22f, h * .52f), androidx.compose.ui.geometry.Offset(w * .43f, h * .74f), w * .11f, cap = StrokeCap.Round)
                     drawLine(ink, androidx.compose.ui.geometry.Offset(w * .43f, h * .74f), androidx.compose.ui.geometry.Offset(w * .8f, h * .27f), w * .11f, cap = StrokeCap.Round)
+                }
+                SlateIcon.CLOSE -> {
+                    drawLine(ink, androidx.compose.ui.geometry.Offset(w * .27f, h * .27f), androidx.compose.ui.geometry.Offset(w * .73f, h * .73f), w * .1f, cap = StrokeCap.Round)
+                    drawLine(ink, androidx.compose.ui.geometry.Offset(w * .73f, h * .27f), androidx.compose.ui.geometry.Offset(w * .27f, h * .73f), w * .1f, cap = StrokeCap.Round)
+                }
+                SlateIcon.PLUS, SlateIcon.MINUS -> {
+                    drawLine(ink, androidx.compose.ui.geometry.Offset(w * .2f, h * .5f), androidx.compose.ui.geometry.Offset(w * .8f, h * .5f), w * .1f, cap = StrokeCap.Round)
+                    if (icon == SlateIcon.PLUS) drawLine(ink, androidx.compose.ui.geometry.Offset(w * .5f, h * .2f), androidx.compose.ui.geometry.Offset(w * .5f, h * .8f), w * .1f, cap = StrokeCap.Round)
+                }
+                SlateIcon.POWER -> {
+                    drawArc(ink, startAngle = -50f, sweepAngle = 280f, useCenter = false, topLeft = Offset(w * .2f, h * .24f),
+                        size = androidx.compose.ui.geometry.Size(w * .6f, h * .6f), style = Stroke(w * .075f, cap = StrokeCap.Round))
+                    drawLine(ink, Offset(w * .5f, h * .1f), Offset(w * .5f, h * .48f), w * .075f, cap = StrokeCap.Round)
+                }
+                SlateIcon.WALLET -> {
+                    drawRoundRect(ink, topLeft = Offset(w * .12f, h * .26f), size = androidx.compose.ui.geometry.Size(w * .76f, h * .52f),
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(w * .1f), style = Stroke(w * .075f))
+                    drawLine(ink, Offset(w * .12f, h * .42f), Offset(w * .88f, h * .42f), w * .075f)
+                    drawCircle(ink, radius = w * .05f, center = Offset(w * .72f, h * .6f))
+                }
+                SlateIcon.GRID -> listOf(.14f to .14f, .6f to .14f, .14f to .6f, .6f to .6f).forEach { (x, y) ->
+                    drawRoundRect(ink, topLeft = Offset(w * x, h * y), size = androidx.compose.ui.geometry.Size(w * .26f, h * .26f),
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(w * .06f), style = Stroke(w * .07f))
+                }
+                SlateIcon.CASH -> {
+                    drawRoundRect(ink, topLeft = Offset(w * .1f, h * .28f), size = androidx.compose.ui.geometry.Size(w * .8f, h * .44f),
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(w * .09f), style = Stroke(w * .07f))
+                    drawCircle(ink, radius = w * .1f, center = Offset(w * .5f, h * .5f), style = Stroke(w * .07f))
+                }
+                SlateIcon.LOCK -> {
+                    drawRoundRect(ink, topLeft = Offset(w * .2f, h * .45f), size = androidx.compose.ui.geometry.Size(w * .6f, h * .4f),
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(w * .08f), style = Stroke(w * .075f))
+                    drawArc(ink, startAngle = 180f, sweepAngle = 180f, useCenter = false, topLeft = Offset(w * .33f, h * .16f),
+                        size = androidx.compose.ui.geometry.Size(w * .34f, h * .34f), style = Stroke(w * .075f, cap = StrokeCap.Round))
+                    drawLine(ink, Offset(w * .33f, h * .33f), Offset(w * .33f, h * .46f), w * .075f)
+                    drawLine(ink, Offset(w * .67f, h * .33f), Offset(w * .67f, h * .46f), w * .075f)
+                }
+                SlateIcon.HAPTIC -> {
+                    drawRoundRect(ink, topLeft = Offset(w * .34f, h * .14f), size = androidx.compose.ui.geometry.Size(w * .32f, h * .72f),
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(w * .07f), style = Stroke(w * .07f))
+                    drawLine(ink, Offset(w * .16f, h * .36f), Offset(w * .16f, h * .64f), w * .075f, cap = StrokeCap.Round)
+                    drawLine(ink, Offset(w * .84f, h * .36f), Offset(w * .84f, h * .64f), w * .075f, cap = StrokeCap.Round)
+                }
+                SlateIcon.MOTION -> {
+                    val wave = Path().apply {
+                        moveTo(w * .08f, h * .5f); cubicTo(w * .22f, h * .18f, w * .38f, h * .18f, w * .5f, h * .5f)
+                        cubicTo(w * .62f, h * .82f, w * .78f, h * .82f, w * .92f, h * .5f)
+                    }
+                    drawPath(wave, ink, style = Stroke(w * .075f, cap = StrokeCap.Round))
+                }
+                SlateIcon.LIST -> listOf(.28f, .5f, .72f).forEach { y ->
+                    drawLine(ink, Offset(w * .4f, h * y), Offset(w * .88f, h * y), w * .075f, cap = StrokeCap.Round)
+                    drawCircle(ink, radius = w * .04f, center = Offset(w * .16f, h * y))
+                }
+                SlateIcon.DOWNLOAD, SlateIcon.UPLOAD -> {
+                    val down = icon == SlateIcon.DOWNLOAD
+                    drawLine(ink, Offset(w * .5f, h * .16f), Offset(w * .5f, h * .68f), w * .075f, cap = StrokeCap.Round)
+                    val head = Path().apply {
+                        if (down) { moveTo(w * .3f, h * .48f); lineTo(w * .5f, h * .68f); lineTo(w * .7f, h * .48f) }
+                        else { moveTo(w * .3f, h * .36f); lineTo(w * .5f, h * .16f); lineTo(w * .7f, h * .36f) }
+                    }
+                    drawPath(head, ink, style = Stroke(w * .075f, cap = StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round))
+                    drawLine(ink, Offset(w * .2f, h * .86f), Offset(w * .8f, h * .86f), w * .075f, cap = StrokeCap.Round)
+                }
+                SlateIcon.APP_ICON -> {
+                    drawRoundRect(ink, topLeft = Offset(w * .24f, h * .1f), size = androidx.compose.ui.geometry.Size(w * .52f, h * .8f),
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(w * .12f), style = Stroke(w * .07f))
+                    val diamond = Path().apply { moveTo(w * .5f, h * .34f); lineTo(w * .62f, h * .5f); lineTo(w * .5f, h * .66f); lineTo(w * .38f, h * .5f); close() }
+                    drawPath(diamond, ink, style = Stroke(w * .06f, join = androidx.compose.ui.graphics.StrokeJoin.Round))
+                }
+                SlateIcon.PERSON, SlateIcon.PERSON_ADD -> {
+                    val add = icon == SlateIcon.PERSON_ADD
+                    val cx = if (add) .4f else .5f
+                    drawCircle(ink, radius = w * .17f, center = androidx.compose.ui.geometry.Offset(w * cx, h * .34f), style = Stroke(w * .075f))
+                    val body = Path().apply {
+                        if (add) {
+                            moveTo(w * .08f, h * .88f); cubicTo(w * .08f, h * .68f, w * .22f, h * .58f, w * .4f, h * .58f)
+                            cubicTo(w * .5f, h * .58f, w * .58f, h * .6f, w * .65f, h * .65f)
+                        } else {
+                            moveTo(w * .2f, h * .88f); cubicTo(w * .2f, h * .68f, w * .34f, h * .58f, w * .5f, h * .58f)
+                            cubicTo(w * .66f, h * .58f, w * .8f, h * .68f, w * .8f, h * .88f)
+                        }
+                    }
+                    drawPath(body, ink, style = Stroke(w * .075f, cap = StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round))
+                    if (add) {
+                        drawLine(ink, androidx.compose.ui.geometry.Offset(w * .8f, h * .4f), androidx.compose.ui.geometry.Offset(w * .8f, h * .7f), w * .075f, cap = StrokeCap.Round)
+                        drawLine(ink, androidx.compose.ui.geometry.Offset(w * .65f, h * .55f), androidx.compose.ui.geometry.Offset(w * .95f, h * .55f), w * .075f, cap = StrokeCap.Round)
+                    }
                 }
             }
         }
